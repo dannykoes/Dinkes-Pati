@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Response;
 use Illuminate\Http\Request;
 use App\Models\Questionnaire;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 
 class QuestionnaireController extends Controller
@@ -13,7 +15,11 @@ class QuestionnaireController extends Controller
      */
     public function index()
     {
-        $questionnaires = Questionnaire::where('user_id', Auth::user()->id)->get();
+    
+    $user = Auth::user();
+
+    // Ambil semua kuis tanpa memfilter berdasarkan user_id, sehingga semua role dapat melihatnya
+    $questionnaires = Questionnaire::all();
 
         // Kirim data ke view
         return view('questionnaires.index', compact('questionnaires'));
@@ -54,25 +60,40 @@ class QuestionnaireController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(string $id)
+    // Menampilkan form edit
+    public function edit(Questionnaire $questionnaire)
     {
-        //
+        return view('questionnaires.edit', compact('questionnaire'));
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
+    // Memproses update kuesioner
+    public function update(Request $request, Questionnaire $questionnaire)
     {
-        //
+        $validatedData = $request->validate([
+            'title' => 'required|max:255',
+            'description' => 'nullable'
+        ]);
+
+        $questionnaire->update($validatedData);
+
+        return redirect()
+            ->route('questionnaires.index')
+            ->with('success', 'Kuesioner berhasil diperbarui!');
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
+    // Menghapus kuesioner
+    public function destroy(Questionnaire $questionnaire)
     {
-        //
+        try {
+            $questionnaire->delete();
+            return redirect()
+                ->route('questionnaires.index')
+                ->with('success', 'Kuesioner berhasil dihapus!');
+        } catch (\Exception $e) {
+            return redirect()
+                ->route('questionnaires.index')
+                ->with('error', 'Gagal menghapus kuesioner!');
+        }
     }
     public function thankyou(Questionnaire $questionnaire)
     {
@@ -95,4 +116,25 @@ class QuestionnaireController extends Controller
         // return $responses;
         return view('questionnaires.responses', compact('questionnaire', 'responses'));
     }
+    public function showResponses($id)
+    {
+        $questionnaire = Questionnaire::findOrFail($id);
+        $responses = $questionnaire->responses()
+            ->when(request('search'), function($query) {
+                $query->where('respondent_email', 'like', '%'.request('search').'%');
+            })
+            ->paginate(10);
+        
+        // Data untuk navigasi
+        $nextQuestionnaire = Questionnaire::where('id', '>', $id)->orderBy('id')->first();
+        $prevQuestionnaire = Questionnaire::where('id', '<', $id)->orderBy('id', 'desc')->first();
+        
+        return view('questionnaires.responses', compact(
+            'questionnaire', 
+            'responses', 
+            'nextQuestionnaire', 
+            'prevQuestionnaire'
+        ));
+    }
+
 }

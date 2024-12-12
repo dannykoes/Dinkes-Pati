@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Banner;
 use Illuminate\Http\Request;
-
-
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 
 class BannerController extends Controller
 {
@@ -36,10 +36,13 @@ class BannerController extends Controller
             'image' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
         ]);
     
-        // Upload gambar
-        $imageName = time().'.'.$request->image->extension();  
-        $request->image->move(public_path('images'), $imageName);
-    
+        // Menyimpan file gambar ke folder 'banner/{tahun}/{bulan}/{hari}' dalam storage/app
+        if ($request->hasFile('image')) {
+            $imageName = $request->file('image')->store('banner/' . date('Y/m/d'));
+        } else {
+            $imageName = null; // Jika tidak ada gambar yang diupload
+        }
+        
         // Simpan ke database
         Banner::create([
             'title' => $request->title,
@@ -70,14 +73,13 @@ class BannerController extends Controller
 
         // Jika gambar baru diupload
         if ($request->hasFile('image')) {
-            $imageName = time().'.'.$request->image->extension();  
-            $request->image->move(public_path('images'), $imageName);
-
-            // Hapus gambar lama
-            if (file_exists(public_path('images/'.$banner->image))) {
-                unlink(public_path('images/'.$banner->image));
+            // Hapus gambar lama jika ada
+            if ($banner->image) {
+                Storage::delete($banner->image); // Hapus gambar lama tanpa 'public' disk
             }
-
+    
+            // Simpan gambar baru
+            $imageName = $request->file('image')->store('banner/' . date('Y/m/d'));
             $banner->image = $imageName;
         }
 
@@ -93,9 +95,9 @@ class BannerController extends Controller
      */
     public function destroy(Banner $banner)
     {
-        // Hapus gambar dari folder
-        if (file_exists(public_path('images/'.$banner->image))) {
-            unlink(public_path('images/'.$banner->image));
+        // Hapus gambar dari storage jika ada
+        if ($banner->image) {
+            Storage::delete($banner->image); // Hapus gambar tanpa 'public' disk
         }
 
         // Hapus data dari database
@@ -103,5 +105,22 @@ class BannerController extends Controller
 
         return redirect()->route('banner.index') // Mengarahkan kembali ke halaman index setelah delete
                          ->with('success', 'Banner berhasil dihapus.');
+    }
+
+    /**
+     * Show the image from storage.
+     */
+    public function showImage($path)
+    {
+        // Menyusun path lengkap menuju gambar
+        $fullPath = storage_path('app/' . $path);
+
+        // Cek apakah file ada
+        if (file_exists($fullPath)) {
+            return response()->file($fullPath);
+        }
+
+        // Jika file tidak ditemukan
+        abort(404, 'Gambar tidak ditemukan.');
     }
 }

@@ -1,7 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
-
+use Illuminate\Support\Facades\Storage;
 use App\Models\ActivityGallery;
 use Illuminate\Http\Request;
 
@@ -35,9 +35,13 @@ class ActivityGalleryController extends Controller
             'description' => 'nullable|string',
         ]);
 
-        // Upload gambar
-        $imageName = time().'.'.$request->image->extension();
-        $request->image->move(public_path('images/activity-galleries'), $imageName);
+        if ($request->hasFile('image')) {
+            $imageName = $request->file('image')->store('activity-galleries/' . date('Y/m/d'));
+        } else {
+            $imageName = null; // Pastikan image tidak kosong
+        }
+
+
 
         // Simpan ke database
         ActivityGallery::create([
@@ -71,47 +75,63 @@ class ActivityGalleryController extends Controller
      */
     public function update(Request $request, ActivityGallery $activityGallery)
     {
-        $request->validate([
+        // Validasi input
+        $validated = $request->validate([
             'activity_title' => 'required|string|max:255',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
             'description' => 'nullable|string',
         ]);
-
+    
         // Jika gambar baru diupload
-        if ($request->hasFile('image')) {
-            $imageName = time().'.'.$request->image->extension();
-            $request->image->move(public_path('images/activity-galleries'), $imageName);
-
-            // Hapus gambar lama
-            if (file_exists(public_path('images/activity-galleries/'.$activityGallery->image))) {
-                unlink(public_path('images/activity-galleries/'.$activityGallery->image));
-            }
-
-            $activityGallery->image = $imageName;
+       // Proses upload gambar baru jika ada
+       if ($request->hasFile('image')) {
+        if ($activityGallery->image) {
+            Storage::delete($activityGallery->image); // Hapus gambar lama
         }
-
-        $activityGallery->activity_title = $request->activity_title;
-        $activityGallery->description = $request->description;
+        $activityGallery->image = $request->file('image')->store('activity-galleries/' . date('Y/m/d'));
+    }
+        // Perbarui data lainnya
+        $activityGallery->activity_title = $validated['activity_title'];
+        $activityGallery->description = $validated['description'];
         $activityGallery->save();
-
+    
+        // Redirect dengan pesan sukses
         return redirect()->route('activity-galleries.index')
                          ->with('success', 'Kegiatan berhasil diperbarui.');
     }
+    
 
     /**
      * Remove the specified resource from storage.
      */
     public function destroy(ActivityGallery $activityGallery)
     {
-        // Hapus gambar dari folder
-        if (file_exists(public_path('images/activity-galleries/'.$activityGallery->image))) {
-            unlink(public_path('images/activity-galleries/'.$activityGallery->image));
-        }
+     
+       // Hapus gambar dari storage jika ada
+       if ($activityGallery->image) {
+        Storage::delete($activityGallery->image);
+    }
 
-        // Hapus data dari database
-        $activityGallery->delete();
+    // Hapus data dari database
+    $activityGallery->delete();
+
+
 
         return redirect()->route('activity-galleries.index')
                          ->with('success', 'Kegiatan berhasil dihapus.');
+    }
+
+    public function showGallery($path)
+    {
+        // Menyusun path lengkap menuju gambar
+        $fullPath = storage_path('app/' . $path);
+
+        // Cek apakah file ada
+        if (file_exists($fullPath)) {
+            return response()->file($fullPath);
+        }
+
+        // Jika file tidak ditemukan
+        abort(404, 'Gambar tidak ditemukan.');
     }
 }
